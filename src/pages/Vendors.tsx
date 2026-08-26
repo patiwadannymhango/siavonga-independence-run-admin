@@ -2,18 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  createRegistrationManually,
-  deleteRegistration,
-  downloadExport,
-  getCategories,
-  getDashboard,
-  listRegistrations,
-  updateRegistrationStatus,
+  createVendorRegistrationManually,
+  deleteVendorRegistration,
+  downloadVendorExport,
+  getVendorCategories,
+  listVendorRegistrations,
+  updateVendorRegistrationStatus,
+  REQUIREMENT_OPTIONS,
   STATUS_OPTIONS,
-  type AdminRegistration,
-  type DashboardStats,
-  type RaceCategory,
-} from '../api/registrations';
+  type AdminVendorRegistration,
+  type VendorCategory,
+} from '../api/vendors';
 
 const PAGE_SIZE = 25;
 const REFRESH_INTERVAL_MS = 30000;
@@ -30,28 +29,19 @@ function formatTime(d: Date) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-// Matches the public registration form's exact field options/values, so an
-// admin-entered registration validates the same way a public one does.
-const GENDER_OPTIONS = ['male', 'female'];
-const AGE_RANGE_OPTIONS = ['Under 18', '18-29', '30-39', '40-49', '50-59', '60+'];
-const TSHIRT_SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'];
-
-// Collapses the backend's 6 statuses down to the 3 buckets the admin cares
-// about at a glance.
 function registrationStatusLabel(status: string): 'Confirmed' | 'Unconfirmed' | 'Exempted' {
   if (status === 'CONFIRMED') return 'Confirmed';
   if (status === 'CANCELLED' || status === 'EXPIRED' || status === 'REFUNDED') return 'Exempted';
   return 'Unconfirmed';
 }
 
-export default function Registrations() {
+export default function Vendors() {
   const { logout, role, isAdmin } = useAuth();
 
   const [now, setNow] = useState(new Date());
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [categories, setCategories] = useState<RaceCategory[]>([]);
+  const [categories, setCategories] = useState<VendorCategory[]>([]);
 
-  const [rows, setRows] = useState<AdminRegistration[]>([]);
+  const [rows, setRows] = useState<AdminVendorRegistration[]>([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -60,39 +50,35 @@ export default function Registrations() {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [raceFilter, setRaceFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
 
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addForm, setAddForm] = useState({
+    business_name: '',
     full_name: '',
     email: '',
     phone: '',
+    business_location: '',
     category_id: '',
-    gender: '',
-    age_range: '',
-    country: '',
-    t_shirt_size: '',
-    club_or_institution: '',
-    emergency_contact_name: '',
-    emergency_contact_phone: '',
-    medical_notes: '',
+    products_services: '',
+    requirement: '',
     status: 'CONFIRMED',
   });
   const [exportBusy, setExportBusy] = useState(false);
 
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<AdminRegistration | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminVendorRegistration | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const load = useCallback(
     (silent = false) => {
       if (!silent) setLoading(true);
       setError('');
-      listRegistrations({
+      listVendorRegistrations({
         search,
         status: statusFilter,
-        category: raceFilter,
+        category: categoryFilter,
         ordering: '-registered_at',
         page,
       })
@@ -100,23 +86,16 @@ export default function Registrations() {
           setRows(data.results);
           setCount(data.count);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load registrations.'))
+        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load vendor registrations.'))
         .finally(() => setLoading(false));
     },
-    [search, statusFilter, raceFilter, page]
+    [search, statusFilter, categoryFilter, page]
   );
 
-  function loadStats() {
-    getDashboard()
-      .then(setStats)
-      .catch(() => {});
-  }
-
   useEffect(load, [load]);
-  useEffect(loadStats, []);
 
   useEffect(() => {
-    getCategories()
+    getVendorCategories()
       .then(setCategories)
       .catch(() => {});
   }, []);
@@ -127,64 +106,35 @@ export default function Registrations() {
   }, []);
 
   useEffect(() => {
-    const poll = setInterval(() => {
-      load(true);
-      loadStats();
-    }, REFRESH_INTERVAL_MS);
+    const poll = setInterval(() => load(true), REFRESH_INTERVAL_MS);
     return () => clearInterval(poll);
   }, [load]);
 
   function handleRefresh() {
     load();
-    loadStats();
   }
 
-  function statusCount(status: string) {
-    return stats?.by_status.find((s) => s.status === status)?.count ?? 0;
-  }
-
-  const pendingCount = statusCount('PENDING_PAYMENT') + statusCount('PAYMENT_PROCESSING');
-
-  async function handleAddPerson() {
+  async function handleAddVendor() {
     setAddBusy(true);
     setError('');
     try {
-      await createRegistrationManually({
-        category_id: addForm.category_id,
-        full_name: addForm.full_name,
-        email: addForm.email,
-        phone: addForm.phone,
-        gender: addForm.gender,
-        age_range: addForm.age_range,
-        country: addForm.country,
-        t_shirt_size: addForm.t_shirt_size,
-        club_or_institution: addForm.club_or_institution,
-        emergency_contact_name: addForm.emergency_contact_name,
-        emergency_contact_phone: addForm.emergency_contact_phone,
-        medical_notes: addForm.medical_notes,
-        status: addForm.status,
-      });
-      setNotice('Person registered.');
+      await createVendorRegistrationManually(addForm);
+      setNotice(`${addForm.business_name} registered.`);
       setAddOpen(false);
       setAddForm({
+        business_name: '',
         full_name: '',
         email: '',
         phone: '',
+        business_location: '',
         category_id: '',
-        gender: '',
-        age_range: '',
-        country: '',
-        t_shirt_size: '',
-        club_or_institution: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        medical_notes: '',
+        products_services: '',
+        requirement: '',
         status: 'CONFIRMED',
       });
       load();
-      loadStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register person.');
+      setError(err instanceof Error ? err.message : 'Failed to register vendor.');
     } finally {
       setAddBusy(false);
     }
@@ -194,11 +144,11 @@ export default function Registrations() {
     setExportBusy(true);
     setError('');
     try {
-      const blob = await downloadExport();
+      const blob = await downloadVendorExport();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'siavonga-independence-run-registrations.xlsx';
+      a.download = 'siavonga-independence-run-vendor-registrations.xlsx';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -210,15 +160,14 @@ export default function Registrations() {
     }
   }
 
-  async function handleStatusChange(registration: AdminRegistration, newStatus: string) {
+  async function handleStatusChange(registration: AdminVendorRegistration, newStatus: string) {
     if (newStatus === registration.status) return;
     setStatusBusyId(registration.id);
     setError('');
     try {
-      await updateRegistrationStatus(registration.id, newStatus);
-      setNotice(`${registration.participant.full_name}'s status updated to ${titleCase(newStatus)}.`);
+      await updateVendorRegistrationStatus(registration.id, newStatus);
+      setNotice(`${registration.vendor.business_name}'s status updated to ${titleCase(newStatus)}.`);
       load(true);
-      loadStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status.');
     } finally {
@@ -231,11 +180,10 @@ export default function Registrations() {
     setDeleteBusy(true);
     setError('');
     try {
-      await deleteRegistration(deleteTarget.id);
-      setNotice('Registration deleted.');
+      await deleteVendorRegistration(deleteTarget.id);
+      setNotice('Vendor registration deleted.');
       setDeleteTarget(null);
       load();
-      loadStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete registration.');
     } finally {
@@ -252,7 +200,7 @@ export default function Registrations() {
           <img src="/logo.svg" alt="" className="logo-badge" aria-hidden="true" />
           <div className="header-title">
             <p className="eyebrow">SIAVONGA INDEPENDENCE RUN 2026</p>
-            <h1>Registrations</h1>
+            <h1>Vendors</h1>
           </div>
           <nav className="nav-tabs">
             <NavLink to="/" className={({ isActive }) => `nav-tab${isActive ? ' active' : ''}`} end>
@@ -272,9 +220,11 @@ export default function Registrations() {
           <button className="btn" onClick={handleRefresh}>
             ↻ Refresh
           </button>
-          <button className="btn btn-success" onClick={() => setAddOpen(true)}>
-            + Add Person
-          </button>
+          {isAdmin && (
+            <button className="btn btn-success" onClick={() => setAddOpen(true)}>
+              + Add Vendor
+            </button>
+          )}
           <button className="btn btn-amber" onClick={handleExport} disabled={exportBusy}>
             {exportBusy ? 'Exporting…' : '↓ Export Excel'}
           </button>
@@ -287,35 +237,10 @@ export default function Registrations() {
       {error && <div className="banner banner-error">{error}</div>}
       {notice && <div className="banner banner-success">{notice}</div>}
 
-      {stats && (
-        <div className="stats-row">
-          <div className="stat-card">
-            <p className="stat-label">TOTAL</p>
-            <p className="stat-value">{stats.total_registrations}</p>
-            <p className="stat-sub">registrations</p>
-          </div>
-          <div className="stat-card paid">
-            <p className="stat-label">PAID</p>
-            <p className="stat-value">{statusCount('CONFIRMED')}</p>
-            <p className="stat-sub">confirmed</p>
-          </div>
-          <div className="stat-card">
-            <p className="stat-label">AWAITING CONFIRMATION</p>
-            <p className="stat-value">{pendingCount}</p>
-            <p className="stat-sub">pending / processing</p>
-          </div>
-          <div className="stat-card">
-            <p className="stat-label">TODAY</p>
-            <p className="stat-value">{stats.today_count}</p>
-            <p className="stat-sub">new today</p>
-          </div>
-        </div>
-      )}
-
       <div className="filters-row">
         <input
           className="filter-input"
-          placeholder="Search name, email, phone, reference…"
+          placeholder="Search business, contact, email, phone, reference…"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -339,22 +264,20 @@ export default function Registrations() {
         </select>
         <select
           className="filter-select"
-          value={raceFilter}
+          value={categoryFilter}
           onChange={(e) => {
-            setRaceFilter(e.target.value);
+            setCategoryFilter(e.target.value);
             setPage(1);
           }}
         >
-          <option value="">All races</option>
+          <option value="">All categories</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </select>
-        <span className="filters-count">
-          {count} of {stats?.total_registrations ?? count}
-        </span>
+        <span className="filters-count">{count} vendor registrations</span>
       </div>
 
       <div className="table-card">
@@ -364,14 +287,12 @@ export default function Registrations() {
               <tr>
                 <th>•</th>
                 <th>Reference</th>
-                <th>Name</th>
-                <th>Organisation</th>
-                <th>Race</th>
-                <th>Gender</th>
-                <th>Age</th>
+                <th>Business</th>
+                <th>Contact</th>
+                <th>Category</th>
                 <th>Phone</th>
                 <th>Email</th>
-                <th>Shirt</th>
+                <th>Requirement</th>
                 <th>Amount</th>
                 <th>Status</th>
                 {isAdmin && <th>Actions</th>}
@@ -381,17 +302,13 @@ export default function Registrations() {
               {rows.map((r, i) => (
                 <tr key={r.id}>
                   <td className="dim">{(page - 1) * PAGE_SIZE + i + 1}</td>
-                  <td>{r.registration_number}</td>
-                  <td className="name">{r.participant.full_name}</td>
-                  <td className={r.club_or_institution ? '' : 'dim'}>{r.club_or_institution || '—'}</td>
+                  <td className={r.registration_number ? '' : 'dim'}>{r.registration_number || 'Not yet assigned'}</td>
+                  <td className="name">{r.vendor.business_name}</td>
+                  <td>{r.vendor.full_name}</td>
                   <td>{r.category_name}</td>
-                  <td className={r.participant.gender ? '' : 'dim'}>
-                    {titleCase(r.participant.gender) || '—'}
-                  </td>
-                  <td className={r.participant.age_range ? '' : 'dim'}>{r.participant.age_range || '—'}</td>
-                  <td className={r.participant.phone ? '' : 'dim'}>{r.participant.phone || '—'}</td>
-                  <td className={r.participant.email ? '' : 'dim'}>{r.participant.email || '—'}</td>
-                  <td className={r.t_shirt_size ? '' : 'dim'}>{r.t_shirt_size || '—'}</td>
+                  <td className={r.vendor.phone ? '' : 'dim'}>{r.vendor.phone || '—'}</td>
+                  <td className={r.vendor.email ? '' : 'dim'}>{r.vendor.email || '—'}</td>
+                  <td className={r.requirement ? '' : 'dim'}>{r.requirement || '—'}</td>
                   <td className="dim">
                     {r.currency} {Number(r.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
@@ -410,9 +327,7 @@ export default function Registrations() {
                         ))}
                       </select>
                     ) : (
-                      <span className={`status-badge status-${r.status}`}>
-                        {registrationStatusLabel(r.status)}
-                      </span>
+                      <span className={`status-badge status-${r.status}`}>{registrationStatusLabel(r.status)}</span>
                     )}
                   </td>
                   {isAdmin && (
@@ -427,7 +342,7 @@ export default function Registrations() {
             </tbody>
           </table>
           {loading && <div className="loading-state">Loading…</div>}
-          {!loading && rows.length === 0 && <div className="empty-state">No registrations match these filters.</div>}
+          {!loading && rows.length === 0 && <div className="empty-state">No vendor registrations match these filters.</div>}
         </div>
 
         <div className="table-footer">
@@ -450,13 +365,17 @@ export default function Registrations() {
       {addOpen && (
         <div className="modal-backdrop" onClick={() => setAddOpen(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h2>Add person</h2>
+            <h2>Add vendor</h2>
             <div className="field">
-              <label>Full name</label>
+              <label>Business / company name</label>
               <input
-                value={addForm.full_name}
-                onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })}
+                value={addForm.business_name}
+                onChange={(e) => setAddForm({ ...addForm, business_name: e.target.value })}
               />
+            </div>
+            <div className="field">
+              <label>Contact person</label>
+              <input value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} />
             </div>
             <div className="field">
               <label>Email</label>
@@ -467,20 +386,51 @@ export default function Registrations() {
               <input value={addForm.phone} onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })} />
             </div>
             <div className="field">
-              <label>Race</label>
+              <label>Business location</label>
+              <input
+                value={addForm.business_location}
+                onChange={(e) => setAddForm({ ...addForm, business_location: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label>Vendor category</label>
               <select
                 className="filter-select"
                 style={{ width: '100%' }}
                 value={addForm.category_id}
                 onChange={(e) => setAddForm({ ...addForm, category_id: e.target.value })}
               >
-                <option value="">Select a race…</option>
+                <option value="">Select a category…</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="field">
+              <label>Requirement</label>
+              <select
+                className="filter-select"
+                style={{ width: '100%' }}
+                value={addForm.requirement}
+                onChange={(e) => setAddForm({ ...addForm, requirement: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {REQUIREMENT_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Products / services</label>
+              <textarea
+                rows={3}
+                value={addForm.products_services}
+                onChange={(e) => setAddForm({ ...addForm, products_services: e.target.value })}
+              />
             </div>
             <div className="field">
               <label>Status</label>
@@ -497,99 +447,14 @@ export default function Registrations() {
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label>Gender</label>
-              <select
-                className="filter-select"
-                style={{ width: '100%' }}
-                value={addForm.gender}
-                onChange={(e) => setAddForm({ ...addForm, gender: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {GENDER_OPTIONS.map((g) => (
-                  <option key={g} value={g}>
-                    {titleCase(g)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Age range</label>
-              <select
-                className="filter-select"
-                style={{ width: '100%' }}
-                value={addForm.age_range}
-                onChange={(e) => setAddForm({ ...addForm, age_range: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {AGE_RANGE_OPTIONS.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Country</label>
-              <input
-                value={addForm.country}
-                placeholder="Zambia"
-                onChange={(e) => setAddForm({ ...addForm, country: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>T-shirt size</label>
-              <select
-                className="filter-select"
-                style={{ width: '100%' }}
-                value={addForm.t_shirt_size}
-                onChange={(e) => setAddForm({ ...addForm, t_shirt_size: e.target.value })}
-              >
-                <option value="">Select…</option>
-                {TSHIRT_SIZE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Club / institution</label>
-              <input
-                value={addForm.club_or_institution}
-                onChange={(e) => setAddForm({ ...addForm, club_or_institution: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Emergency contact name</label>
-              <input
-                value={addForm.emergency_contact_name}
-                onChange={(e) => setAddForm({ ...addForm, emergency_contact_name: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Emergency contact phone</label>
-              <input
-                value={addForm.emergency_contact_phone}
-                onChange={(e) => setAddForm({ ...addForm, emergency_contact_phone: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Medical notes</label>
-              <textarea
-                rows={3}
-                value={addForm.medical_notes}
-                onChange={(e) => setAddForm({ ...addForm, medical_notes: e.target.value })}
-              />
-            </div>
             <div className="modal-actions">
               <button className="btn" onClick={() => setAddOpen(false)}>
                 Cancel
               </button>
               <button
                 className="btn btn-success"
-                onClick={handleAddPerson}
-                disabled={addBusy || !addForm.full_name || !addForm.category_id}
+                onClick={handleAddVendor}
+                disabled={addBusy || !addForm.business_name || !addForm.full_name || !addForm.category_id}
               >
                 {addBusy ? 'Saving…' : 'Register'}
               </button>
@@ -601,10 +466,10 @@ export default function Registrations() {
       {deleteTarget && (
         <div className="modal-backdrop" onClick={() => !deleteBusy && setDeleteTarget(null)}>
           <div className="modal-card modal-card-sm" onClick={(e) => e.stopPropagation()}>
-            <h2>Delete registration?</h2>
+            <h2>Delete vendor registration?</h2>
             <p style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 20 }}>
-              This permanently removes {deleteTarget.participant.full_name}'s registration (
-              {deleteTarget.registration_number}). This cannot be undone.
+              This permanently removes {deleteTarget.vendor.business_name}'s registration (
+              {deleteTarget.registration_number ?? 'unconfirmed'}). This cannot be undone.
             </p>
             <div className="modal-actions">
               <button className="btn" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>

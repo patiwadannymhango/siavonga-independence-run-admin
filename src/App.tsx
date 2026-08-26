@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Registrations from './pages/Registrations';
+import Vendors from './pages/Vendors';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { authenticated } = useAuth();
@@ -20,6 +21,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Registrations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vendors"
+            element={
+              <ProtectedRoute>
+                <Vendors />
               </ProtectedRoute>
             }
           />
